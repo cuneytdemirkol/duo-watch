@@ -65,7 +65,8 @@ def main():
         notify("iPhone Duo PICKUP ACILDI (GitHub)", "\n".join(hits))
     elif not stores:
         notify("duo_check UYARI", "Apple magaza listesi bos dondu, format degismis olabilir", "high")
-
+    if os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch":
+        notify("duo_check test OK", f"GitHub -> ntfy hatti calisiyor ({len(stores)} magaza okundu)", "default")
 
 if __name__ == "__main__":
     main()
