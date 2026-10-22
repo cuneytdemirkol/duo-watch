@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Tek seferlik kontrol (GitHub Actions icin). Pickup acik olan config varsa ntfy'a push atar."""
+import http.cookiejar
 import json
 import os
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -21,8 +23,23 @@ PARTS = {
 }
 PICKUP_URL = "https://www.apple.com/ae/shop/retail/pickup-message"
 PRODUCT_URL = "https://www.apple.com/ae/shop/buy-iphone/iphone-duo"
-UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 "
-      "(KHTML, like Gecko) Version/17.0 Safari/605.1.15")
+WARM_URL = PRODUCT_URL + "/7.6-inch-display-256gb-night-sky"
+UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+      "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
+
+_jar = http.cookiejar.CookieJar()
+_opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(_jar))
+
+
+def _get(url, accept, referer=None):
+    h = {"User-Agent": UA, "Accept": accept, "Accept-Language": "en-US,en;q=0.9",
+         "sec-ch-ua-platform": '"macOS"', "sec-fetch-site": "same-origin",
+         "sec-fetch-mode": "cors" if referer else "navigate",
+         "sec-fetch-dest": "empty" if referer else "document"}
+    if referer:
+        h["Referer"] = referer
+    with _opener.open(urllib.request.Request(url, headers=h), timeout=30) as r:
+        return r.read().decode("utf-8", "ignore")
 
 
 def notify(title, msg, priority="urgent"):
@@ -33,17 +50,26 @@ def notify(title, msg, priority="urgent"):
     urllib.request.urlopen(req, timeout=15)
 
 
-def main():
+def fetch():
     q = {"pl": "true", "mts.0": "regular", "location": "Dubai"}
     for i, pn in enumerate(PARTS):
         q[f"parts.{i}"] = pn
-    req = urllib.request.Request(
-        PICKUP_URL + "?" + urllib.parse.urlencode(q),
-        headers={"User-Agent": UA, "Accept": "application/json",
-                 "Accept-Language": "en-AE,en;q=0.9", "Referer": PRODUCT_URL})
+    url = PICKUP_URL + "?" + urllib.parse.urlencode(q)
+    for attempt in (1, 2):
+        try:
+            _jar.clear()
+            _get(WARM_URL, "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+            return json.loads(_get(url, "*/*", referer=WARM_URL))
+        except Exception as e:
+            if attempt == 1:
+                time.sleep(5)
+                continue
+            raise
+
+
+def main():
     try:
-        with urllib.request.urlopen(req, timeout=30) as r:
-            data = json.loads(r.read().decode("utf-8", "ignore"))
+        data = fetch()
     except Exception as e:
         print(f"HATA: Apple'a ulasilamadi ({e})")
         sys.exit(1)
@@ -67,6 +93,7 @@ def main():
         notify("duo_check UYARI", "Apple magaza listesi bos dondu, format degismis olabilir", "high")
     if os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch":
         notify("duo_check test OK", f"GitHub -> ntfy hatti calisiyor ({len(stores)} magaza okundu)", "default")
+
 
 if __name__ == "__main__":
     main()
