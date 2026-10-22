@@ -2,13 +2,21 @@ name: iPhone Duo pickup watch
 
 on:
   schedule:
-    - cron: "*/5 * * * *"
-  workflow_dispatch:
+    - cron: "7 * * * *"      # her saat basi (GitHub gecikse de bir sonraki run devralir)
+    - cron: "37 * * * *"     # yarim saatte bir ikinci baslatma: run'lar ust uste biner, bosluk kalmaz
+  workflow_dispatch:          # elle test: tek sorgu + "test OK" bildirimi
+
+concurrency:
+  group: duo-${{ github.run_id }}   # her run kendi grubu: paralel calismaya izin ver
 
 jobs:
-  check:
+  watch:
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 65
+    env:
+      NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+      LOOP_MINUTES: ${{ github.event_name == 'schedule' && '55' || '0' }}
+      CHECK_EVERY: "90"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
